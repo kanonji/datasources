@@ -303,7 +303,16 @@ class CsvSource extends DataSource {
 				$i = 0;
 				$record['id'] = $lineCount;
 				foreach($this->fields as $field) {
-					$record[trim($field, '"\'')] = trim($data[$i++], '"\'');
+					$field = trim($field, '"\'');
+					$data[$i] = trim($data[$i], '"\'');
+					if(isset($record[$field]) && is_array($record[$field])){
+						$record[$field][] = $data[$i] ;
+					} elseif(isset($record[$field])) {
+						$record[$field] = array($record[$field]);
+					} else{
+						$record[$field] = $data[$i];
+					}
+					$i++;
 				}
 
 				if ($this->__checkConditions($record, $queryData['conditions'])) {
