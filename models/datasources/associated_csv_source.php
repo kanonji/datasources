@@ -29,6 +29,10 @@
  *   );
  */
 
+if (!class_exists('CsvSource')) {
+    App::import('Plugin', 'datasources.CsvSource');
+}
+
 /**
  * AssociatedCsvSource Datasource
  *
@@ -172,12 +176,16 @@ class AssociatedCsvSource extends CsvSource {
 				foreach($this->fields as $field) {
 					$field = trim($field, '"\'');
 					$item = trim($data[$i++], '"\'');
-					if(isset($record[$field]) && is_array($record[$field])){
-						$record[$field][] = $item;
-					} elseif(isset($record[$field])) {
-						$record[$field] = array($record[$field], $item);
+					if(strpos($field, '.') === false)
+						$modelName = isset($model->target) ? $model->target : $model->table;
+					else
+						list($modelName, $field) = explode('.', $field);
+					if(isset($record[$modelName][$field]) && is_array($record[$modelName][$field])){
+						$record[$field][$field][] = $item;
+					} elseif(isset($record[$modelName][$field])) {
+						$record[$modelName][$field] = array($record[$modelName][$field], $item);
 					} else{
-						$record[$field] = $item;
+						$record[$modelName][$field] = $item;
 					}
 				}
 
