@@ -1,8 +1,8 @@
 <?php
 /**
- * Comma Separated Values Datasource
+ * Comma Separated Values Datasource with association
  *
- * PHP versions 4 and 5
+ * PHP 5
  *
  * CakePHP(tm) : Rapid Development Framework (http://cakephp.org)
  * Copyright 2005-2009, Cake Software Foundation, Inc. (http://cakefoundation.org)
@@ -21,7 +21,7 @@
  *
  * Create a datasource in your config/database.php
  *   public $csvfile = array(
- *     'datasource' => 'Datasources.CsvSource',
+ *     'datasource' => 'Datasources.AssociatedCsvSource',
  *     'path' => '/path/to/file', // Path
  *     'extension' => 'csv', // File extension
  *     'readonly' => true, // Mark for read only access
@@ -29,17 +29,13 @@
  *   );
  */
 
-if (!class_exists('Folder')) {
-	App::import('Core', 'Folder');
-}
-
 /**
- * CSVSource Datasource
+ * AssociatedCsvSource Datasource
  *
  * @package datasources
  * @subpackage datasources.models.datasources
  */
-class CsvSource extends DataSource {
+class AssociatedCsvSource extends CsvSource {
 
 /**
  * Description
@@ -47,7 +43,7 @@ class CsvSource extends DataSource {
  * @var string
  * @access public
  */
-	var $description = 'CSV Data Source';
+	var $description = 'CSV Data Source with association';
 
 /**
  * Column delimiter
@@ -109,135 +105,6 @@ class CsvSource extends DataSource {
 		'extension' => 'csv',
 		'readonly' => true,
 		'recursive' => false);
-
-/**
- * Constructor
- *
- * @param string $config Configuration array
- * @param boolean $autoConnect Automatically connect to / open the file
- * @access public
- */
-	function __construct($config = null, $autoConnect = true) {
-		$this->debug = Configure::read('debug') > 0;
-		$this->fullDebug = Configure::read('debug') > 1;
-		parent::__construct($config);
-		if ($autoConnect) {
-			$this->connect();
-		}
-	}
-
-/**
- * Connects to the mailbox using options in the given configuration array.
- *
- * @return boolean True if the file could be opened.
- * @access public
- */
-	function connect() {
-		$this->connected = false;
-
-		if ($this->config['readonly']) {
-			$create = false;
-			$mode = 0;
-		} else {
-			$create = true;
-			$mode = 0777;
-		}
-
-		$this->connection =& new Folder($this->config['path'], $create, $mode);
-		if ($this->connection) {
-			$this->handle = array();
-			$this->connected = true;
-		}
-		return $this->connected;
-	}
-
-/**
- * List available sources
- *
- * @return array of available CSV files
- * @access public
- */
-	function listSources() {
-		$this->config['database'] = 'csv';
-		$cache = parent::listSources();
-		if ($cache !== null) {
-			return $cache;
-		}
-
-		$extPattern = '\.' . preg_quote($this->config['extension']);
-		if ($this->config['recursive']) {
-			$list = $this->connection->findRecursive('.*' . $extPattern, true);
-			foreach($list as &$item) {
-				$item = mb_substr($item, mb_strlen($this->config['path'] . DS));
-			}
-		} else {
-			$list = $this->connection->find('.*' . $extPattern, true);
-		}
-
-		foreach ($list as &$item) {
-			$item = preg_replace('/' . $extPattern . '$/i', '', $item);
-		}
-
-		parent::listSources($list);
-		unset($this->config['database']);
-		return $list;
-	}
-
-/**
- * Returns a Model description (metadata) or null if none found.
- *
- * @return mixed
- * @access public
- */
-	function describe($model) {
-		$this->__getDescriptionFromFirstLine($model);
-		return $this->fields;
-	}
-
-/**
- * Get Description from First Line, and store into class vars
- *
- * @param Model $model
- * @return boolean True, Success
- * @access private
- */
-	function __getDescriptionFromFirstLine($model) {
-		$filename = $model->table . '.' . $this->config['extension'];
-		$handle = fopen($this->config['path'] . DS .  $filename, 'r');
-		$line = rtrim(fgets($handle));
-		$data_comma = explode(',', $line);
-		$data_semicolon = explode(';', $line);
-
-		if (count($data_comma) > count($data_semicolon)) {
-			$this->delimiter = ',';
-			$this->fields = $data_comma;
-			$this->maxCol = count($data_comma);
-		} else {
-			$this->delimiter = ';';
-			$this->fields = $data_semicolon;
-			$this->maxCol = count($data_semicolon);
-		}
-		fclose($handle);
-		return true;
-	}
-
-/**
- * Close file handle
- *
- * @return null
- * @access public
- */
-	function close() {
-		if ($this->connected) {
-			if ($this->handle) {
-				foreach($this->handle as $h) {
-				  @fclose($h);
-				}
-				$this->handle = false;
-			}
-			$this->connected = false;
-		}
-	}
 
 /**
  * Read Data
@@ -303,7 +170,15 @@ class CsvSource extends DataSource {
 				$i = 0;
 				$record['id'] = $lineCount;
 				foreach($this->fields as $field) {
-					$record[trim($field, '"\'')] = trim($data[$i++], '"\'');
+					$field = trim($field, '"\'');
+					$item = trim($data[$i++], '"\'');
+					if(isset($record[$field]) && is_array($record[$field])){
+						$record[$field][] = $item;
+					} elseif(isset($record[$field])) {
+						$record[$field] = array($record[$field], $item);
+					} else{
+						$record[$field] = $item;
+					}
 				}
 
 				if ($this->__checkConditions($record, $queryData['conditions'])) {
@@ -383,34 +258,4 @@ class CsvSource extends DataSource {
 		}
 		return $result;
 	}
-
-/**
- * Private helper method to crete rule.
- *
- * @param string $name
- * @param string $value
- * @return string
- * @access private
- */
-	function __createRule($name, $value) {
-		if (strpos($name, ' ') !== false) {
-			return array(str_replace(' ', '', $name) . $value);
-		} else {
-			return array("{$name}={$value}");
-		}
-	}
-
-/**
- * Calculate
- *
- * @param Model $model 
- * @param mixed $func 
- * @param array $params 
- * @return array
- * @access public
- */
-	function calculate(&$model, $func, $params = array()) {
-		return array('count' => true);
-	}
 }
-?>
